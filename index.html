@@ -1,78 +1,400 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Image Tracking AR Video</title>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
-  <!-- 1. Import JavaScript libraries -->
-  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-
-  <!-- 2. CSS to make the camera feed full-screen -->
-  <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parent Control</title>
+    <!-- Leaflet.js CSS for map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 900px;
+        }
+        h1, h2 {
+            color: #1c1e21;
+            text-align: center;
+        }
+        input[type="email"], input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        button {
+            width: 100%;
+            padding: 12px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .error {
+            color: #d93025;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        #logout-btn {
+            background-color: #dc3545;
+            width: auto;
+        }
+        #logout-btn:hover {
+            background-color: #c82333;
+        }
+        #link-container {
+            margin-top: 20px;
+        }
+        .live-view {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .video-container, .map-container {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        #remote-video {
+            width: 100%;
+            background-color: #000;
+            border-radius: 4px;
+        }
+        #map {
+            height: 300px;
+            width: 100%;
+        }
+        #client-page p {
+            font-size: 18px;
+            color: #333;
+            text-align: center;
+        }
+        #status {
+            font-weight: bold;
+            color: #007bff;
+        }
+        @media (max-width: 768px) {
+            .live-view {
+                grid-template-columns: 1fr;
+            }
+            .container {
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
-
 <body>
-  <!-- 3. The AR Scene -->
-  <a-scene
-    embedded
-    arjs="sourceType: webcam; debugUIEnabled: false;"
-    renderer="logarithmicDepthBuffer: true;"
-  >
-    <!-- Pre-load your video for better performance -->
-    <a-assets>
-      <video
-        id="myvideo"
-        src="my-video.mp4"
-        loop="true"
-        playsinline
-        webkit-playsinline
-        muted="true"
-      ></video>
-    </a-assets>
 
-    <!-- The AR Marker that will be tracked -->
-    <a-marker id="mymarker" type="pattern" url="pattern-myimage.patt">
-      <!-- The Video object that appears on the marker -->
-      <a-video
-        id="ar-video"
-        src="#myvideo"
-        width="1.6"
-        height="0.9"
-        rotation="-90 0 0"
-        position="0 0 0"
-      ></a-video>
-    </a-marker>
+    <!-- Login Page View -->
+    <div id="login-page" class="container">
+        <h1>Parent Control Login</h1>
+        <div id="login-form">
+            <input type="email" id="email" placeholder="Email">
+            <input type="password" id="password" placeholder="Password">
+            <button id="login-btn">Login</button>
+            <p id="login-error" class="error"></p>
+        </div>
+    </div>
 
-    <!-- The camera -->
-    <a-entity camera></a-entity>
-  </a-scene>
+    <!-- Dashboard Page View -->
+    <div id="dashboard-page" class="container" style="display: none;">
+        <div class="header">
+            <h1>Dashboard</h1>
+            <button id="logout-btn">Logout</button>
+        </div>
+        
+        <button id="generate-link-btn">Generate Tracking Link</button>
+        <div id="link-container" style="display: none;">
+            <p>Share this link:</p>
+            <input type="text" id="generated-link" readonly>
+        </div>
 
-  <!-- 4. JavaScript to control play/pause -->
-  <script>
-    window.addEventListener('load', function() {
-      const marker = document.querySelector('#mymarker');
-      const video = document.querySelector('#myvideo');
+        <div class="live-view">
+            <div class="video-container">
+                <h2>Live Camera Feed</h2>
+                <video id="remote-video" autoplay playsinline></video>
+            </div>
+            <div class="map-container">
+                <h2>Live Location</h2>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
 
-      // Play video when marker is found
-      marker.addEventListener('markerFound', function() {
-        video.play();
-        console.log("Marker Found!");
-      });
+    <!-- Client Page View -->
+    <div id="client-page" class="container" style="display: none;">
+        <h1>Tracking is Active</h1>
+        <p>Please keep this page open. Your parent is monitoring this session.</p>
+        <p id="status">Initializing...</p>
+        <video id="local-video" autoplay muted playsinline style="display:none;"></video>
+    </div>
 
-      // Pause and reset video when marker is lost
-      marker.addEventListener('markerLost', function() {
-        video.pause();
-        video.currentTime = 0; // Rewind to start
-        console.log("Marker Lost.");
-      });
-    });
-  </script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    
+    <!-- Leaflet.js for map -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <script>
+        // PASTE YOUR FIREBASE CONFIG HERE
+        const firebaseConfig = {
+  apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
+  authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
+  databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
+  projectId: "parentalcontrol-eb9e5",
+  storageBucket: "parentalcontrol-eb9e5.firebasestorage.app",
+  messagingSenderId: "840440578873",
+  appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
+  measurementId: "G-DFS3EZZ95P"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+
+        // --- GLOBAL VARIABLES & CONFIG ---
+        const peerConnectionConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+        let peerConnection;
+        let map;
+        let marker;
+
+        // --- DOM ELEMENTS ---
+        const loginPage = document.getElementById('login-page');
+        const dashboardPage = document.getElementById('dashboard-page');
+        const clientPage = document.getElementById('client-page');
+        
+        // Login elements
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('login-btn');
+        const loginError = document.getElementById('login-error');
+
+        // Dashboard elements
+        const logoutBtn = document.getElementById('logout-btn');
+        const generateLinkBtn = document.getElementById('generate-link-btn');
+        const generatedLinkInput = document.getElementById('generated-link');
+        const linkContainer = document.getElementById('link-container');
+        const remoteVideo = document.getElementById('remote-video');
+
+        // Client elements
+        const statusText = document.getElementById('status');
+        const localVideo = document.getElementById('local-video');
+
+        // --- MAIN ROUTER (Decides which page to show) ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session');
+
+            if (sessionId) {
+                // This is a CLIENT browser
+                loginPage.style.display = 'none';
+                dashboardPage.style.display = 'none';
+                clientPage.style.display = 'block';
+                startClientLogic(sessionId);
+            } else {
+                // This is an ADMIN browser
+                clientPage.style.display = 'none';
+                handleAdminFlow();
+            }
+        });
+
+        // --- ADMIN LOGIC ---
+        function handleAdminFlow() {
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    // User is logged in, show dashboard
+                    loginPage.style.display = 'none';
+                    dashboardPage.style.display = 'block';
+                    initializeMap();
+                } else {
+                    // User is logged out, show login
+                    loginPage.style.display = 'block';
+                    dashboardPage.style.display = 'none';
+                }
+            });
+
+            loginBtn.addEventListener('click', () => {
+                auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value)
+                    .catch(error => {
+                        loginError.textContent = error.message;
+                    });
+            });
+
+            logoutBtn.addEventListener('click', () => {
+                auth.signOut();
+            });
+
+            generateLinkBtn.addEventListener('click', () => {
+                const sessionRef = db.ref('sessions').push();
+                const sessionId = sessionRef.key;
+                const clientUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
+                
+                generatedLinkInput.value = clientUrl;
+                linkContainer.style.display = 'block';
+
+                startDashboardListening(sessionId);
+            });
+        }
+
+        function initializeMap() {
+            if (!map) { // Initialize only once
+                map = L.map('map').setView([20.5937, 78.9629], 5);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap'
+                }).addTo(map);
+            }
+        }
+
+        function updateMap(lat, lng) {
+            const newLatLng = new L.LatLng(lat, lng);
+            if (!marker) {
+                marker = L.marker(newLatLng).addTo(map);
+            } else {
+                marker.setLatLng(newLatLng);
+            }
+            map.setView(newLatLng, 16);
+        }
+
+        function startDashboardListening(sessionId) {
+            const sessionRef = db.ref(`sessions/${sessionId}`);
+            
+            // Reset old connection if exists
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            remoteVideo.srcObject = null;
+            
+            // Listen for location
+            sessionRef.child('location').on('value', snapshot => {
+                if (snapshot.exists()) {
+                    const { lat, lng } = snapshot.val();
+                    updateMap(lat, lng);
+                }
+            });
+
+            // --- WebRTC Signaling for Dashboard ---
+            peerConnection = new RTCPeerConnection(peerConnectionConfig);
+
+            peerConnection.ontrack = event => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    sessionRef.child('iceCandidates/dashboard').push(event.candidate.toJSON());
+                }
+            };
+
+            sessionRef.child('iceCandidates/client').on('child_added', snapshot => {
+                if (snapshot.exists()) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                }
+            });
+
+            sessionRef.child('offer').on('value', async snapshot => {
+                if (snapshot.exists()) {
+                    const offer = snapshot.val();
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+                }
+            });
+        }
+
+        // --- CLIENT LOGIC ---
+        async function startClientLogic(sessionId) {
+            const sessionRef = db.ref(`sessions/${sessionId}`);
+            statusText.textContent = "Requesting permissions...";
+
+            try {
+                const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+
+                // Watch location
+                navigator.geolocation.watchPosition(
+                    position => {
+                        const { latitude, longitude } = position.coords;
+                        sessionRef.child('location').set({ lat: latitude, lng: longitude });
+                    },
+                    error => console.error("Location error:", error),
+                    { enableHighAccuracy: true }
+                );
+
+                statusText.textContent = "Connecting...";
+
+                // --- WebRTC Signaling for Client ---
+                peerConnection = new RTCPeerConnection(peerConnectionConfig);
+                
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        sessionRef.child('iceCandidates/client').push(event.candidate.toJSON());
+                    }
+                };
+
+                sessionRef.child('iceCandidates/dashboard').on('child_added', snapshot => {
+                    if (snapshot.exists()) {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                    }
+                });
+
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                sessionRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
+
+                sessionRef.child('answer').on('value', async snapshot => {
+                    if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
+                        const answer = snapshot.val();
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        statusText.textContent = "Connection Established. Tracking is Active.";
+                    }
+                });
+
+            } catch (error) {
+                console.error("Permission or connection error:", error);
+                statusText.textContent = `Error: ${error.message}. Please grant permissions and reload.`;
+                alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.message}`);
+            }
+        }
+    </script>
 </body>
 </html>
