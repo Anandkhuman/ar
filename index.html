@@ -187,47 +187,46 @@
 
         // --- GLOBAL VARIABLES & CONFIG ---
         const peerConnectionConfig = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
         };
         let peerConnection;
         let map;
         let marker;
+        let activeSessionRef;
 
         // --- DOM ELEMENTS ---
         const loginPage = document.getElementById('login-page');
         const dashboardPage = document.getElementById('dashboard-page');
         const clientPage = document.getElementById('client-page');
         
-        // Login elements
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
         const loginBtn = document.getElementById('login-btn');
         const loginError = document.getElementById('login-error');
 
-        // Dashboard elements
         const logoutBtn = document.getElementById('logout-btn');
         const generateLinkBtn = document.getElementById('generate-link-btn');
         const generatedLinkInput = document.getElementById('generated-link');
         const linkContainer = document.getElementById('link-container');
         const remoteVideo = document.getElementById('remote-video');
 
-        // Client elements
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
 
-        // --- MAIN ROUTER (Decides which page to show) ---
+        // --- MAIN ROUTER ---
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const sessionId = urlParams.get('session');
 
             if (sessionId) {
-                // This is a CLIENT browser
                 loginPage.style.display = 'none';
                 dashboardPage.style.display = 'none';
                 clientPage.style.display = 'block';
                 startClientLogic(sessionId);
             } else {
-                // This is an ADMIN browser
                 clientPage.style.display = 'none';
                 handleAdminFlow();
             }
@@ -237,12 +236,10 @@
         function handleAdminFlow() {
             auth.onAuthStateChanged(user => {
                 if (user) {
-                    // User is logged in, show dashboard
                     loginPage.style.display = 'none';
                     dashboardPage.style.display = 'block';
                     initializeMap();
                 } else {
-                    // User is logged out, show login
                     loginPage.style.display = 'block';
                     dashboardPage.style.display = 'none';
                 }
@@ -250,17 +247,18 @@
 
             loginBtn.addEventListener('click', () => {
                 auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value)
-                    .catch(error => {
-                        loginError.textContent = error.message;
-                    });
+                    .catch(error => loginError.textContent = error.message);
             });
 
-            logoutBtn.addEventListener('click', () => {
-                auth.signOut();
-            });
+            logoutBtn.addEventListener('click', () => auth.signOut());
 
             generateLinkBtn.addEventListener('click', () => {
+                if(activeSessionRef) {
+                    activeSessionRef.off(); // Purane listeners ko band karo
+                }
                 const sessionRef = db.ref('sessions').push();
+                activeSessionRef = sessionRef;
+
                 const sessionId = sessionRef.key;
                 const clientUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
                 
@@ -272,7 +270,7 @@
         }
 
         function initializeMap() {
-            if (!map) { // Initialize only once
+            if (!map) {
                 map = L.map('map').setView([20.5937, 78.9629], 5);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap'
@@ -293,46 +291,41 @@
         function startDashboardListening(sessionId) {
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
-            // Reset old connection if exists
             if (peerConnection) {
                 peerConnection.close();
             }
             remoteVideo.srcObject = null;
             
-            // Listen for location
             sessionRef.child('location').on('value', snapshot => {
-                if (snapshot.exists()) {
-                    const { lat, lng } = snapshot.val();
-                    updateMap(lat, lng);
-                }
+                if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
             });
 
-            // --- WebRTC Signaling for Dashboard ---
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
             peerConnection.ontrack = event => {
-                remoteVideo.srcObject = event.streams[0];
+                console.log("Dashboard: Received remote track!");
+                if (remoteVideo.srcObject !== event.streams[0]) {
+                    remoteVideo.srcObject = event.streams[0];
+                }
             };
+            peerConnection.oniceconnectionstatechange = () => console.log(`Dashboard ICE state: ${peerConnection.iceConnectionState}`);
 
             peerConnection.onicecandidate = event => {
-                if (event.candidate) {
-                    sessionRef.child('iceCandidates/dashboard').push(event.candidate.toJSON());
-                }
+                if (event.candidate) sessionRef.child('iceCandidates/dashboard').push(event.candidate.toJSON());
             };
 
             sessionRef.child('iceCandidates/client').on('child_added', snapshot => {
-                if (snapshot.exists()) {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-                }
+                if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
 
             sessionRef.child('offer').on('value', async snapshot => {
-                if (snapshot.exists()) {
-                    const offer = snapshot.val();
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                    const answer = await peerConnection.createAnswer();
-                    await peerConnection.setLocalDescription(answer);
-                    sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+                if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setLocalDescription(answer);
+                        sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
+                    } catch (e) { console.error("Error creating answer: ", e); }
                 }
             });
         }
@@ -346,7 +339,6 @@
                 const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
 
-                // Watch location
                 navigator.geolocation.watchPosition(
                     position => {
                         const { latitude, longitude } = position.coords;
@@ -358,23 +350,17 @@
 
                 statusText.textContent = "Connecting...";
 
-                // --- WebRTC Signaling for Client ---
                 peerConnection = new RTCPeerConnection(peerConnectionConfig);
+                peerConnection.oniceconnectionstatechange = () => console.log(`Client ICE state: ${peerConnection.iceConnectionState}`);
                 
-                localStream.getTracks().forEach(track => {
-                    peerConnection.addTrack(track, localStream);
-                });
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
                 peerConnection.onicecandidate = event => {
-                    if (event.candidate) {
-                        sessionRef.child('iceCandidates/client').push(event.candidate.toJSON());
-                    }
+                    if (event.candidate) sessionRef.child('iceCandidates/client').push(event.candidate.toJSON());
                 };
 
                 sessionRef.child('iceCandidates/dashboard').on('child_added', snapshot => {
-                    if (snapshot.exists()) {
-                        peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-                    }
+                    if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
                 });
 
                 const offer = await peerConnection.createOffer();
@@ -383,8 +369,7 @@
 
                 sessionRef.child('answer').on('value', async snapshot => {
                     if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
-                        const answer = snapshot.val();
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
                         statusText.textContent = "Connection Established. Tracking is Active.";
                     }
                 });
