@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Image Tracking AR Video</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+  <!-- 1. Import JavaScript libraries -->
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+  <!-- 2. CSS to make the camera feed full-screen -->
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- 3. The AR Scene -->
+  <a-scene
+    embedded
+    arjs="sourceType: webcam; debugUIEnabled: false;"
+    renderer="logarithmicDepthBuffer: true;"
+  >
+    <!-- Pre-load your video for better performance -->
+    <a-assets>
+      <video
+        id="myvideo"
+        src="my-video.mp4"
+        loop="true"
+        playsinline
+        webkit-playsinline
+        muted="true"
+      ></video>
+    </a-assets>
+
+    <!-- The AR Marker that will be tracked -->
+    <a-marker id="mymarker" type="pattern" url="pattern-myimage.patt">
+      <!-- The Video object that appears on the marker -->
+      <a-video
+        id="ar-video"
+        src="#myvideo"
+        width="1.6"
+        height="0.9"
+        rotation="-90 0 0"
+        position="0 0 0"
+      ></a-video>
+    </a-marker>
+
+    <!-- The camera -->
+    <a-entity camera></a-entity>
+  </a-scene>
+
+  <!-- 4. JavaScript to control play/pause -->
+  <script>
+    window.addEventListener('load', function() {
+      const marker = document.querySelector('#mymarker');
+      const video = document.querySelector('#myvideo');
+
+      // Play video when marker is found
+      marker.addEventListener('markerFound', function() {
+        video.play();
+        console.log("Marker Found!");
+      });
+
+      // Pause and reset video when marker is lost
+      marker.addEventListener('markerLost', function() {
+        video.pause();
+        video.currentTime = 0; // Rewind to start
+        console.log("Marker Lost.");
+      });
+    });
+  </script>
+</body>
+</html>
