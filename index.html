@@ -225,8 +225,9 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
     <script>
+        // --- Firebase Configuration ---
+        // IMPORTANT: Replace this with your own Firebase project configuration.
         const firebaseConfig = {
-            // Your config details are fine, left them as they were.
             apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
             authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
             databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
@@ -241,6 +242,7 @@
         const auth = firebase.auth();
         const db = firebase.database();
 
+        // --- WebRTC Configuration ---
         const peerConnectionConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -253,6 +255,7 @@
         let activeSessionRef;
         let imageCaptureInterval;
 
+        // --- DOM Element References ---
         const loginPage = document.getElementById('login-page');
         const dashboardPage = document.getElementById('dashboard-page');
         const clientPage = document.getElementById('client-page');
@@ -270,21 +273,25 @@
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
 
+        // --- Main Logic ---
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const sessionId = urlParams.get('session');
 
             if (sessionId) {
+                // This is the client/child's device
                 loginPage.style.display = 'none';
                 dashboardPage.style.display = 'none';
                 clientPage.style.display = 'block';
                 startClientLogic(sessionId);
             } else {
+                // This is the admin/parent's device
                 clientPage.style.display = 'none';
                 handleAdminFlow();
             }
         });
 
+        // --- Admin/Parent Functions ---
         function handleAdminFlow() {
             auth.onAuthStateChanged(user => {
                 if (user) {
@@ -305,8 +312,8 @@
             logoutBtn.addEventListener('click', () => auth.signOut());
 
             generateLinkBtn.addEventListener('click', () => {
-                if(activeSessionRef) {
-                    activeSessionRef.off();
+                if (activeSessionRef) {
+                    activeSessionRef.off(); // Stop listening to old sessions
                 }
                 const sessionRef = db.ref('sessions').push();
                 activeSessionRef = sessionRef;
@@ -340,7 +347,7 @@
 
         function initializeMap() {
             if (!map) {
-                map = L.map('map').setView([20.5937, 78.9629], 5);
+                map = L.map('map').setView([20.5937, 78.9629], 5); // Default view (India)
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap'
                 }).addTo(map);
@@ -382,9 +389,7 @@
             peerConnection.ontrack = event => {
                 console.log("DASHBOARD: Received remote track:", event.track.kind);
                 remoteStream.addTrack(event.track);
-                // Attempt to play the video as soon as a track is received.
-                // This is crucial for handling browser autoplay policies.
-                remoteVideo.play().catch(e => console.error("DASHBOARD: Remote play failed", e));
+                remoteVideo.play().catch(e => console.error("DASHBOARD: Remote video play failed", e));
             };
 
             peerConnection.onicecandidate = event => {
@@ -409,13 +414,14 @@
             });
         }
 
+        // --- Client/Child Functions ---
         async function startClientLogic(sessionId) {
             console.log(`CLIENT: Starting session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
             statusText.textContent = "Requesting permissions...";
 
             try {
-                // *** CHANGE: Explicitly request the front-facing (user) camera. ***
+                // Request front-facing camera and microphone
                 const streamConstraints = {
                     video: { facingMode: 'user' },
                     audio: true
@@ -427,30 +433,31 @@
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                // *** CHANGE: Use the 'onplaying' event to ensure the video has frames before capturing. ***
-                // This is more reliable than 'onloadedmetadata'.
+                // Wait for the video to start playing before setting up the image capture
                 localVideo.onplaying = () => {
-                    console.log("CLIENT: Video is playing. Starting image capture interval.");
+                    console.log("CLIENT: Local video is playing. Starting image capture interval.");
+                    // Set canvas dimensions based on the actual video size
                     canvas.width = localVideo.videoWidth;
                     canvas.height = localVideo.videoHeight;
                     
-                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear previous interval
+                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear old interval if it exists
                     
                     imageCaptureInterval = setInterval(() => {
-                        // Ensure video is in a ready state to be drawn
                         if (localVideo.readyState >= localVideo.HAVE_CURRENT_DATA) { 
                             try {
                                 context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-                                const imageData = canvas.toDataURL('image/jpeg', 0.7); // Use JPEG for smaller size
+                                // Use JPEG for smaller file size and faster updates
+                                const imageData = canvas.toDataURL('image/jpeg', 0.7); 
                                 sessionRef.child('image').set(imageData);
                             } catch (e) { console.error("CLIENT: Error capturing image:", e); }
                         }
                     }, 5000);
                 };
 
-                // Set the srcObject after defining the event listener to avoid race conditions.
+                // Assign the stream to the video element *after* setting up the event listener
                 localVideo.srcObject = localStream;
 
+                // Start watching location
                 navigator.geolocation.watchPosition(
                     position => sessionRef.child('location').set({ lat: position.coords.latitude, lng: position.coords.longitude }),
                     error => console.error("CLIENT: Location error:", error),
