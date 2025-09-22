@@ -82,7 +82,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
         }
-        .video-container, .map-container {
+        .video-container, .map-container, .image-container {
             border: 1px solid #ddd;
             padding: 10px;
             border-radius: 5px;
@@ -139,6 +139,16 @@
             font-weight: bold;
             color: #007bff;
         }
+        .image-container {
+            margin-top: 20px;
+        }
+        #latest-image {
+            width: 100%;
+            border-radius: 4px;
+            background-color: #f0f0f0;
+            min-height: 200px;
+            display: block;
+        }
         @media (max-width: 768px) {
             .live-view {
                 grid-template-columns: 1fr;
@@ -191,6 +201,12 @@
                 <div id="map"></div>
             </div>
         </div>
+
+        <!-- New Image Snapshot Container -->
+        <div class="image-container">
+            <h2>Latest Snapshot (Updates every 5s)</h2>
+            <img id="latest-image" alt="Waiting for snapshot..." >
+        </div>
     </div>
 
     <!-- Client Page View -->
@@ -198,7 +214,7 @@
         <h1>Tracking is Active</h1>
         <p>Please keep this page open. Your parent is monitoring this session.</p>
         <p id="status">Initializing...</p>
-        <!-- Client video is muted to prevent feedback -->
+        <!-- Client video is muted to prevent feedback and hidden -->
         <video id="local-video" autoplay muted playsinline style="display:none;"></video>
     </div>
 
@@ -215,14 +231,14 @@
         // DO NOT expose your API keys like this in public code.
         // For a real application, use environment variables or a backend server.
         const firebaseConfig = {
-  apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
-  authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
-  databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
-  projectId: "parentalcontrol-eb9e5",
-  storageBucket: "parentalcontrol-eb9e5.firebasestorage.app",
-  messagingSenderId: "840440578873",
-  appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
-  measurementId: "G-DFS3EZZ95P"
+            apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
+            authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
+            databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
+            projectId: "parentalcontrol-eb9e5",
+            storageBucket: "parentalcontrol-eb9e5.firebasestorage.app",
+            messagingSenderId: "840440578873",
+            appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
+            measurementId: "G-DFS3EZZ95P"
         };
 
         // Initialize Firebase
@@ -258,6 +274,7 @@
         const linkContainer = document.getElementById('link-container');
         const remoteVideo = document.getElementById('remote-video');
         const toggleAudioBtn = document.getElementById('toggle-audio-btn');
+        const latestImage = document.getElementById('latest-image'); // New element for image
 
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
@@ -314,7 +331,6 @@
                 startDashboardListening(sessionId);
             });
 
-            // --- AUDIO TOGGLE LOGIC ---
             toggleAudioBtn.addEventListener('click', () => {
                 remoteVideo.muted = !remoteVideo.muted;
                 const icon = toggleAudioBtn.querySelector('i');
@@ -352,9 +368,6 @@
             map.setView(newLatLng, 16);
         }
 
-        // ==========================================================
-        //  FIXED FUNCTION
-        // ==========================================================
         function startDashboardListening(sessionId) {
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
@@ -362,18 +375,22 @@
                 peerConnection.close();
             }
 
-            // 1. Create a new MediaStream to hold the incoming tracks.
             const remoteStream = new MediaStream();
-            // 2. Assign this new stream to the video element's srcObject.
             remoteVideo.srcObject = remoteStream;
             
             sessionRef.child('location').on('value', snapshot => {
                 if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
             });
 
+            // *** NEW: Listen for image snapshots ***
+            sessionRef.child('image').on('value', snapshot => {
+                if (snapshot.exists()) {
+                    latestImage.src = snapshot.val();
+                }
+            });
+
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
-            // 3. When a track is received from the client, add it to our remoteStream.
             peerConnection.ontrack = event => {
                 console.log("Dashboard: Received remote track of kind:", event.track.kind);
                 remoteStream.addTrack(event.track);
@@ -410,6 +427,31 @@
                 // Request both video and audio
                 const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
+
+                // *** NEW: Start capturing and sending images every 5 seconds ***
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+
+                localVideo.onloadedmetadata = () => {
+                    canvas.width = localVideo.videoWidth;
+                    canvas.height = localVideo.videoHeight;
+
+                    setInterval(() => {
+                        // Ensure the video element is ready to capture a frame
+                        if (localVideo.readyState >= 2) { 
+                            try {
+                                context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+                                // Convert canvas to Base64 JPEG string
+                                const imageData = canvas.toDataURL('image/jpeg', 0.7); // 70% quality for smaller size
+                                // Send to Firebase
+                                sessionRef.child('image').set(imageData);
+                            } catch (e) {
+                                console.error("Error capturing and sending image:", e);
+                            }
+                        }
+                    }, 5000); // 5000ms = 5 seconds
+                };
+
 
                 navigator.geolocation.watchPosition(
                     position => {
