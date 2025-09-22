@@ -75,6 +75,22 @@
         }
         #link-container {
             margin-top: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #generated-link {
+            flex-grow: 1;
+            margin-bottom: 0;
+        }
+        #copy-link-btn {
+            width: auto;
+            padding: 10px 15px;
+            background-color: #6c757d;
+            flex-shrink: 0;
+        }
+        #copy-link-btn:hover {
+            background-color: #5a6268;
         }
         .live-view {
             margin-top: 30px;
@@ -82,11 +98,13 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
         }
-        .video-container, .map-container, .image-container {
+        .info-box, .video-container, .map-container, .image-container {
             border: 1px solid #ddd;
             padding: 10px;
             border-radius: 5px;
         }
+        .info-box h2 { text-align: left; margin-top: 0; }
+        .info-box p { margin: 5px 0; font-size: 16px; }
         .video-header {
             display: flex;
             justify-content: space-between;
@@ -104,23 +122,14 @@
             border-radius: 50%;
             font-size: 16px;
             background-color: #dc3545;
-            color: white;
-            border: 1px solid #dc3545;
             display: flex;
             justify-content: center;
             align-items: center;
             flex-shrink: 0;
         }
-        #toggle-audio-btn:hover {
-            background-color: #c82333;
-        }
-        #toggle-audio-btn.live {
-            background-color: #28a745;
-            border-color: #28a745;
-        }
-        #toggle-audio-btn.live:hover {
-            background-color: #218838;
-        }
+        #toggle-audio-btn:hover { background-color: #c82333; }
+        #toggle-audio-btn.live { background-color: #28a745; border-color: #28a745; }
+        #toggle-audio-btn.live:hover { background-color: #218838; }
         #remote-video {
             width: 100%;
             background-color: #000;
@@ -137,25 +146,31 @@
         }
         #status {
             font-weight: bold;
-            color: #6c757d; /* Default color */
-            transition: color 0.3s;
+            font-size: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            color: #6c757d;
+            transition: all 0.3s;
         }
-        /* --- NEW: Status-specific styles --- */
         #status.connecting {
-            color: #007bff; /* Blue for connecting */
+            color: #007bff;
+            border-color: #b8daff;
+            background-color: #cce5ff;
         }
         #status.connected {
-            color: #28a745; /* Green for success */
+            color: #28a745;
+            border-color: #c3e6cb;
+            background-color: #d4edda;
         }
         #status.error {
-            color: #dc3545; /* Red for errors */
+            color: #dc3545;
+            border-color: #f5c6cb;
+            background-color: #f8d7da;
         }
-        #status i {
-            margin-right: 8px;
-        }
-        .image-container {
-            margin-top: 20px;
-        }
+        #status i { margin-right: 10px; }
+        .image-container { margin-top: 20px; }
         #latest-image {
             width: 100%;
             border-radius: 4px;
@@ -164,12 +179,8 @@
             display: block;
         }
         @media (max-width: 768px) {
-            .live-view {
-                grid-template-columns: 1fr;
-            }
-            .container {
-                padding: 20px;
-            }
+            .live-view { grid-template-columns: 1fr; }
+            .container { padding: 20px; }
         }
     </style>
 </head>
@@ -179,8 +190,8 @@
     <div id="login-page" class="container">
         <h1>Parent Control Login</h1>
         <div id="login-form">
-            <input type="email" id="email" placeholder="Email">
-            <input type="password" id="password" placeholder="Password">
+            <input type="email" id="email" placeholder="Email" autocomplete="username">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
             <button id="login-btn">Login</button>
             <p id="login-error" class="error"></p>
         </div>
@@ -193,10 +204,10 @@
             <button id="logout-btn">Logout</button>
         </div>
         
-        <button id="generate-link-btn">Generate Tracking Link</button>
+        <button id="generate-link-btn">Generate New Tracking Link</button>
         <div id="link-container" style="display: none;">
-            <p>Share this link:</p>
             <input type="text" id="generated-link" readonly>
+            <button id="copy-link-btn" title="Copy Link"><i class="fas fa-copy"></i></button>
         </div>
 
         <div class="live-view">
@@ -215,6 +226,12 @@
             </div>
         </div>
 
+        <div class="info-box">
+             <h2>Client Information</h2>
+             <p><strong>IP Address:</strong> <span id="client-ip">Waiting...</span></p>
+             <p><strong>Status:</strong> <span id="dashboard-status">Awaiting Connection...</span></p>
+        </div>
+
         <div class="image-container">
             <h2>Latest Snapshot (Updates every 5s)</h2>
             <img id="latest-image" alt="Waiting for snapshot..." >
@@ -225,7 +242,7 @@
     <div id="client-page" class="container" style="display: none;">
         <h1>Tracking is Active</h1>
         <p>Please keep this page open. Your parent is monitoring this session.</p>
-        <p id="status">Initializing...</p>
+        <p id="status"><i class="fas fa-spinner fa-spin"></i> Initializing...</p>
         <!-- This video element is hidden but necessary for capturing the camera stream -->
         <video id="local-video" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; top: -9999px; left: -9999px;"></video>
     </div>
@@ -240,16 +257,14 @@
 
     <script>
         // --- Firebase Configuration ---
-        // IMPORTANT: Ensure this configuration matches your Firebase project settings.
         const firebaseConfig = {
-            apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
-            authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
-            databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
-            projectId: "parentalcontrol-eb9e5",
-            storageBucket: "parentalcontrol-eb9e5.appspot.com",
-            messagingSenderId: "840440578873",
-            appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
-            measurementId: "G-DFS3EZZ95P"
+            apiKey: "YOUR_API_KEY", // Replace with your actual config
+            authDomain: "your-project-id.firebaseapp.com",
+            databaseURL: "https://your-project-id-default-rtdb.firebaseio.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project-id.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
 
         firebase.initializeApp(firebaseConfig);
@@ -273,19 +288,20 @@
         const loginPage = document.getElementById('login-page');
         const dashboardPage = document.getElementById('dashboard-page');
         const clientPage = document.getElementById('client-page');
-        const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
         const loginBtn = document.getElementById('login-btn');
-        const loginError = document.getElementById('login-error');
         const logoutBtn = document.getElementById('logout-btn');
         const generateLinkBtn = document.getElementById('generate-link-btn');
         const generatedLinkInput = document.getElementById('generated-link');
+        const copyLinkBtn = document.getElementById('copy-link-btn');
         const linkContainer = document.getElementById('link-container');
         const remoteVideo = document.getElementById('remote-video');
         const toggleAudioBtn = document.getElementById('toggle-audio-btn');
         const latestImage = document.getElementById('latest-image');
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
+        const clientIpSpan = document.getElementById('client-ip');
+        const dashboardStatusSpan = document.getElementById('dashboard-status');
+
 
         // --- Main Logic ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -293,11 +309,13 @@
             const sessionId = urlParams.get('session');
 
             if (sessionId) {
+                // This is the client/child page
                 loginPage.style.display = 'none';
                 dashboardPage.style.display = 'none';
                 clientPage.style.display = 'block';
                 startClientLogic(sessionId);
             } else {
+                // This is the admin/parent page
                 clientPage.style.display = 'none';
                 handleAdminFlow();
             }
@@ -317,36 +335,57 @@
             });
 
             loginBtn.addEventListener('click', () => {
-                auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value)
-                    .catch(error => loginError.textContent = error.message);
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                auth.signInWithEmailAndPassword(email, password)
+                    .catch(error => document.getElementById('login-error').textContent = error.message);
             });
 
             logoutBtn.addEventListener('click', () => auth.signOut());
 
             generateLinkBtn.addEventListener('click', () => {
-                if (activeSessionRef) {
-                    activeSessionRef.off();
-                }
+                // Clean up previous session listeners and connections
+                if (activeSessionRef) activeSessionRef.off();
+                if (peerConnection) peerConnection.close();
+                
+                // Reset dashboard UI
+                clientIpSpan.textContent = "Waiting...";
+                dashboardStatusSpan.textContent = "Awaiting Connection...";
+                latestImage.src = "";
+                if(marker) marker.remove();
+                
+                // Create a new session in Firebase
                 const sessionRef = db.ref('sessions').push();
-                activeSessionRef = sessionRef;
+                activeSessionRef = sessionRef; // Store reference for cleanup
+                
                 const sessionId = sessionRef.key;
                 const clientUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
+                
                 generatedLinkInput.value = clientUrl;
-                linkContainer.style.display = 'block';
+                linkContainer.style.display = 'flex';
+                copyLinkBtn.innerHTML = '<i class="fas fa-copy"></i>'; // Reset copy button
+                
                 startDashboardListening(sessionId);
+            });
+
+            copyLinkBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(generatedLinkInput.value).then(() => {
+                    copyLinkBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                    setTimeout(() => {
+                         copyLinkBtn.innerHTML = '<i class="fas fa-copy"></i>';
+                    }, 2000);
+                });
             });
 
             toggleAudioBtn.addEventListener('click', () => {
                 remoteVideo.muted = !remoteVideo.muted;
                 const icon = toggleAudioBtn.querySelector('i');
                 if (remoteVideo.muted) {
-                    icon.classList.remove('fa-microphone');
-                    icon.classList.add('fa-microphone-slash');
+                    icon.className = 'fas fa-microphone-slash';
                     toggleAudioBtn.classList.remove('live');
                     toggleAudioBtn.title = "Listen to Live Audio";
                 } else {
-                    icon.classList.remove('fa-microphone-slash');
-                    icon.classList.add('fa-microphone');
+                    icon.className = 'fas fa-microphone';
                     toggleAudioBtn.classList.add('live');
                     toggleAudioBtn.title = "Mute Live Audio";
                 }
@@ -355,7 +394,7 @@
 
         function initializeMap() {
             if (!map) {
-                map = L.map('map').setView([20.5937, 78.9629], 5);
+                map = L.map('map').setView([20.5937, 78.9629], 5); // Default to India
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap'
                 }).addTo(map);
@@ -376,30 +415,32 @@
             console.log(`DASHBOARD: Listening to session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
-            if (peerConnection) peerConnection.close();
-
             const remoteStream = new MediaStream();
             remoteVideo.srcObject = remoteStream;
-            
+
+            // Listen for client data
             sessionRef.child('location').on('value', snapshot => {
                 if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
             });
-
             sessionRef.child('image').on('value', snapshot => {
                 if (snapshot.exists()) latestImage.src = snapshot.val();
             });
+            sessionRef.child('clientInfo/ip').on('value', snapshot => {
+                if (snapshot.exists()) clientIpSpan.textContent = snapshot.val();
+            });
 
+            // Setup Peer Connection
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
             
-            peerConnection.oniceconnectionstatechange = () => console.log(`DASHBOARD ICE state: ${peerConnection.iceConnectionState}`);
-            peerConnection.onconnectionstatechange = () => console.log(`DASHBOARD Connection state: ${peerConnection.connectionState}`);
+            peerConnection.onconnectionstatechange = () => {
+                const state = peerConnection.connectionState;
+                console.log(`DASHBOARD Connection state: ${state}`);
+                dashboardStatusSpan.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+            };
 
             peerConnection.ontrack = event => {
                 console.log("DASHBOARD: Received remote track:", event.track.kind);
-                event.streams[0].getTracks().forEach(track => {
-                    remoteStream.addTrack(track);
-                });
-                remoteVideo.play().catch(e => console.error("DASHBOARD: Remote video play failed", e));
+                event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
             };
 
             peerConnection.onicecandidate = event => {
@@ -410,6 +451,7 @@
                 if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("DASHBOARD: Error adding client ICE candidate", e));
             });
 
+            // Wait for offer from client
             sessionRef.child('offer').on('value', async snapshot => {
                 if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
                     console.log("DASHBOARD: Received offer, creating answer...");
@@ -428,35 +470,39 @@
         async function startClientLogic(sessionId) {
             console.log(`CLIENT: Starting session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
-            statusText.innerHTML = "Requesting permissions...";
-
+            
+            // Fetch and send IP address
             try {
-                const streamConstraints = {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                sessionRef.child('clientInfo/ip').set(data.ip);
+            } catch (error) {
+                console.error("CLIENT: Could not fetch IP address.", error);
+                sessionRef.child('clientInfo/ip').set("Unavailable");
+            }
+            
+            // Request permissions and start streams
+            try {
+                statusText.innerHTML = `<i class="fas fa-camera"></i> Requesting permissions...`;
+                statusText.className = 'connecting';
+                
+                const localStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'user' },
                     audio: true
-                };
-                const localStream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+                });
+                localVideo.srcObject = localStream;
                 
-                console.log("CLIENT: Permissions granted.");
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
-                
-                localVideo.onplaying = () => {
-                    console.log("CLIENT: Local video is playing. Starting image capture interval.");
+                localVideo.onloadedmetadata = () => {
                     canvas.width = localVideo.videoWidth;
                     canvas.height = localVideo.videoHeight;
                     if (imageCaptureInterval) clearInterval(imageCaptureInterval);
                     imageCaptureInterval = setInterval(() => {
-                        if (localVideo.readyState >= localVideo.HAVE_CURRENT_DATA) { 
-                            try {
-                                context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-                                const imageData = canvas.toDataURL('image/jpeg', 0.7); 
-                                sessionRef.child('image').set(imageData);
-                            } catch (e) { console.error("CLIENT: Error capturing image:", e); }
-                        }
+                        context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+                        sessionRef.child('image').set(canvas.toDataURL('image/jpeg', 0.5));
                     }, 5000);
                 };
-                localVideo.srcObject = localStream;
 
                 navigator.geolocation.watchPosition(
                     position => sessionRef.child('location').set({ lat: position.coords.latitude, lng: position.coords.longitude }),
@@ -464,21 +510,16 @@
                     { enableHighAccuracy: true }
                 );
                 
-                // --- MODIFIED: Clearer status updates ---
-                statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Connecting...`;
-                statusText.className = 'connecting';
+                statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Connecting to dashboard...`;
                 
                 peerConnection = new RTCPeerConnection(peerConnectionConfig);
                 
-                peerConnection.oniceconnectionstatechange = () => console.log(`CLIENT ICE state: ${peerConnection.iceConnectionState}`);
-                
-                // --- MODIFIED: Enhanced connection state handler ---
                 peerConnection.onconnectionstatechange = () => {
                     const state = peerConnection.connectionState;
                     console.log(`CLIENT Connection state: ${state}`);
                     switch (state) {
                         case 'connecting':
-                            statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Connecting...`;
+                            statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Establishing connection...`;
                             statusText.className = 'connecting';
                             break;
                         case 'connected':
@@ -487,6 +528,7 @@
                             break;
                         case 'failed':
                         case 'disconnected':
+                        case 'closed':
                             statusText.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Connection Lost. Please wait...`;
                             statusText.className = 'error';
                             break;
@@ -502,13 +544,15 @@
                 sessionRef.child('iceCandidates/dashboard').on('child_added', snapshot => {
                     if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("CLIENT: Error adding dashboard ICE candidate", e));
                 });
-
+                
+                // Create and send offer
                 console.log("CLIENT: Creating offer...");
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 sessionRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
                 console.log("CLIENT: Offer sent.");
 
+                // Wait for answer
                 sessionRef.child('answer').on('value', async snapshot => {
                     if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
                         console.log("CLIENT: Received answer.");
@@ -518,10 +562,9 @@
 
             } catch (error) {
                 console.error("CLIENT: Permission or connection error:", error);
-                // --- MODIFIED: Better error display ---
                 statusText.innerHTML = `<i class="fas fa-times-circle"></i> Error: ${error.message}.`;
                 statusText.className = 'error';
-                alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.name}: ${error.message}`);
+                alert(`Could not start tracking. Please grant all permissions (Camera, Mic, Location) and refresh the page. Error: ${error.name}`);
             }
         }
     </script>
