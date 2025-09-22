@@ -212,8 +212,8 @@
         <h1>Tracking is Active</h1>
         <p>Please keep this page open. Your parent is monitoring this session.</p>
         <p id="status">Initializing...</p>
-        <!-- *** CHANGE: Video is now positioned off-screen instead of display:none to ensure it renders for image capture *** -->
-        <video id="local-video" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; left: -9999px;"></video>
+        <!-- This video element is hidden but necessary for capturing the camera stream -->
+        <video id="local-video" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; top: -9999px; left: -9999px;"></video>
     </div>
 
     <!-- Firebase SDKs -->
@@ -226,6 +226,7 @@
 
     <script>
         const firebaseConfig = {
+            // Your config details are fine, left them as they were.
             apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
             authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
             databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
@@ -375,15 +376,14 @@
 
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
             
-            // *** CHANGE: Add detailed logging for debugging connection issues ***
             peerConnection.oniceconnectionstatechange = () => console.log(`DASHBOARD ICE state: ${peerConnection.iceConnectionState}`);
             peerConnection.onconnectionstatechange = () => console.log(`DASHBOARD Connection state: ${peerConnection.connectionState}`);
-
 
             peerConnection.ontrack = event => {
                 console.log("DASHBOARD: Received remote track:", event.track.kind);
                 remoteStream.addTrack(event.track);
-                // *** CHANGE: Explicitly play the video when the stream is received to help with autoplay ***
+                // Attempt to play the video as soon as a track is received.
+                // This is crucial for handling browser autoplay policies.
                 remoteVideo.play().catch(e => console.error("DASHBOARD: Remote play failed", e));
             };
 
@@ -415,29 +415,41 @@
             statusText.textContent = "Requesting permissions...";
 
             try {
-                const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                localVideo.srcObject = localStream;
+                // *** CHANGE: Explicitly request the front-facing (user) camera. ***
+                const streamConstraints = {
+                    video: { facingMode: 'user' },
+                    audio: true
+                };
+                const localStream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+                
                 console.log("CLIENT: Permissions granted.");
 
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
-
-                localVideo.onloadedmetadata = () => {
-                    console.log("CLIENT: Video metadata loaded. Starting image capture.");
+                
+                // *** CHANGE: Use the 'onplaying' event to ensure the video has frames before capturing. ***
+                // This is more reliable than 'onloadedmetadata'.
+                localVideo.onplaying = () => {
+                    console.log("CLIENT: Video is playing. Starting image capture interval.");
                     canvas.width = localVideo.videoWidth;
                     canvas.height = localVideo.videoHeight;
                     
-                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear any previous interval
+                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear previous interval
+                    
                     imageCaptureInterval = setInterval(() => {
-                        if (localVideo.readyState >= 2) { 
+                        // Ensure video is in a ready state to be drawn
+                        if (localVideo.readyState >= localVideo.HAVE_CURRENT_DATA) { 
                             try {
                                 context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-                                const imageData = canvas.toDataURL('image/jpeg', 0.7);
+                                const imageData = canvas.toDataURL('image/jpeg', 0.7); // Use JPEG for smaller size
                                 sessionRef.child('image').set(imageData);
                             } catch (e) { console.error("CLIENT: Error capturing image:", e); }
                         }
                     }, 5000);
                 };
+
+                // Set the srcObject after defining the event listener to avoid race conditions.
+                localVideo.srcObject = localStream;
 
                 navigator.geolocation.watchPosition(
                     position => sessionRef.child('location').set({ lat: position.coords.latitude, lng: position.coords.longitude }),
@@ -448,14 +460,16 @@
                 statusText.textContent = "Connecting...";
                 peerConnection = new RTCPeerConnection(peerConnectionConfig);
                 
-                // *** CHANGE: Add detailed logging for debugging connection issues ***
                 peerConnection.oniceconnectionstatechange = () => console.log(`CLIENT ICE state: ${peerConnection.iceConnectionState}`);
                 peerConnection.onconnectionstatechange = () => {
-                    console.log(`CLIENT Connection state: ${peerConnection.connectionState}`);
-                    if (peerConnection.connectionState === 'connected') {
+                    const state = peerConnection.connectionState;
+                    console.log(`CLIENT Connection state: ${state}`);
+                    if (state === 'connected') {
                         statusText.textContent = "Connection Established. Tracking is Active.";
+                    } else if (state === 'failed' || state === 'disconnected') {
+                        statusText.textContent = "Connection lost. Please wait or reload.";
                     }
-                }
+                };
 
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
@@ -483,7 +497,7 @@
             } catch (error) {
                 console.error("CLIENT: Permission or connection error:", error);
                 statusText.textContent = `Error: ${error.message}. Please grant permissions and reload.`;
-                alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.message}`);
+                alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.name}: ${error.message}`);
             }
         }
     </script>
