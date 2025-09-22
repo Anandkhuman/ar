@@ -183,7 +183,7 @@
                         <i class="fas fa-microphone-slash"></i>
                     </button>
                 </div>
-                <!-- Video starts muted by default -->
+                <!-- Video starts muted by default to comply with autoplay policies -->
                 <video id="remote-video" autoplay playsinline muted></video>
             </div>
             <div class="map-container">
@@ -211,7 +211,9 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
     <script>
-        // PASTE YOUR FIREBASE CONFIG HERE
+        // --- CRITICAL SECURITY WARNING ---
+        // DO NOT expose your API keys like this in public code.
+        // For a real application, use environment variables or a backend server.
         const firebaseConfig = {
   apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
   authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
@@ -318,13 +320,11 @@
                 const icon = toggleAudioBtn.querySelector('i');
                 
                 if (remoteVideo.muted) {
-                    // It's currently muted
                     icon.classList.remove('fa-microphone');
                     icon.classList.add('fa-microphone-slash');
                     toggleAudioBtn.classList.remove('live');
                     toggleAudioBtn.title = "Listen to Live Audio";
                 } else {
-                    // It's now live
                     icon.classList.remove('fa-microphone-slash');
                     icon.classList.add('fa-microphone');
                     toggleAudioBtn.classList.add('live');
@@ -352,13 +352,20 @@
             map.setView(newLatLng, 16);
         }
 
+        // ==========================================================
+        //  FIXED FUNCTION
+        // ==========================================================
         function startDashboardListening(sessionId) {
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
             if (peerConnection) {
                 peerConnection.close();
             }
-            remoteVideo.srcObject = null;
+
+            // 1. Create a new MediaStream to hold the incoming tracks.
+            const remoteStream = new MediaStream();
+            // 2. Assign this new stream to the video element's srcObject.
+            remoteVideo.srcObject = remoteStream;
             
             sessionRef.child('location').on('value', snapshot => {
                 if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
@@ -366,12 +373,12 @@
 
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
 
+            // 3. When a track is received from the client, add it to our remoteStream.
             peerConnection.ontrack = event => {
-                console.log("Dashboard: Received remote track!");
-                if (remoteVideo.srcObject !== event.streams[0]) {
-                    remoteVideo.srcObject = event.streams[0];
-                }
+                console.log("Dashboard: Received remote track of kind:", event.track.kind);
+                remoteStream.addTrack(event.track);
             };
+
             peerConnection.oniceconnectionstatechange = () => console.log(`Dashboard ICE state: ${peerConnection.iceConnectionState}`);
 
             peerConnection.onicecandidate = event => {
