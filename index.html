@@ -193,7 +193,6 @@
                         <i class="fas fa-microphone-slash"></i>
                     </button>
                 </div>
-                <!-- Video starts muted by default to comply with autoplay policies -->
                 <video id="remote-video" autoplay playsinline muted></video>
             </div>
             <div class="map-container">
@@ -202,7 +201,6 @@
             </div>
         </div>
 
-        <!-- New Image Snapshot Container -->
         <div class="image-container">
             <h2>Latest Snapshot (Updates every 5s)</h2>
             <img id="latest-image" alt="Waiting for snapshot..." >
@@ -214,8 +212,8 @@
         <h1>Tracking is Active</h1>
         <p>Please keep this page open. Your parent is monitoring this session.</p>
         <p id="status">Initializing...</p>
-        <!-- Client video is muted to prevent feedback and hidden -->
-        <video id="local-video" autoplay muted playsinline style="display:none;"></video>
+        <!-- *** CHANGE: Video is now positioned off-screen instead of display:none to ensure it renders for image capture *** -->
+        <video id="local-video" autoplay muted playsinline style="position: absolute; width: 1px; height: 1px; left: -9999px;"></video>
     </div>
 
     <!-- Firebase SDKs -->
@@ -227,9 +225,6 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
     <script>
-        // --- CRITICAL SECURITY WARNING ---
-        // DO NOT expose your API keys like this in public code.
-        // For a real application, use environment variables or a backend server.
         const firebaseConfig = {
             apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
             authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
@@ -241,12 +236,10 @@
             measurementId: "G-DFS3EZZ95P"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.database();
 
-        // --- GLOBAL VARIABLES & CONFIG ---
         const peerConnectionConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -257,29 +250,25 @@
         let map;
         let marker;
         let activeSessionRef;
+        let imageCaptureInterval;
 
-        // --- DOM ELEMENTS ---
         const loginPage = document.getElementById('login-page');
         const dashboardPage = document.getElementById('dashboard-page');
         const clientPage = document.getElementById('client-page');
-        
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
         const loginBtn = document.getElementById('login-btn');
         const loginError = document.getElementById('login-error');
-
         const logoutBtn = document.getElementById('logout-btn');
         const generateLinkBtn = document.getElementById('generate-link-btn');
         const generatedLinkInput = document.getElementById('generated-link');
         const linkContainer = document.getElementById('link-container');
         const remoteVideo = document.getElementById('remote-video');
         const toggleAudioBtn = document.getElementById('toggle-audio-btn');
-        const latestImage = document.getElementById('latest-image'); // New element for image
-
+        const latestImage = document.getElementById('latest-image');
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
 
-        // --- MAIN ROUTER ---
         document.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const sessionId = urlParams.get('session');
@@ -295,7 +284,6 @@
             }
         });
 
-        // --- ADMIN LOGIC ---
         function handleAdminFlow() {
             auth.onAuthStateChanged(user => {
                 if (user) {
@@ -317,7 +305,7 @@
 
             generateLinkBtn.addEventListener('click', () => {
                 if(activeSessionRef) {
-                    activeSessionRef.off(); // Stop listening to old sessions
+                    activeSessionRef.off();
                 }
                 const sessionRef = db.ref('sessions').push();
                 activeSessionRef = sessionRef;
@@ -369,11 +357,10 @@
         }
 
         function startDashboardListening(sessionId) {
+            console.log(`DASHBOARD: Listening to session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
             
-            if (peerConnection) {
-                peerConnection.close();
-            }
+            if (peerConnection) peerConnection.close();
 
             const remoteStream = new MediaStream();
             remoteVideo.srcObject = remoteStream;
@@ -382,91 +369,94 @@
                 if (snapshot.exists()) updateMap(snapshot.val().lat, snapshot.val().lng);
             });
 
-            // *** NEW: Listen for image snapshots ***
             sessionRef.child('image').on('value', snapshot => {
-                if (snapshot.exists()) {
-                    latestImage.src = snapshot.val();
-                }
+                if (snapshot.exists()) latestImage.src = snapshot.val();
             });
 
             peerConnection = new RTCPeerConnection(peerConnectionConfig);
+            
+            // *** CHANGE: Add detailed logging for debugging connection issues ***
+            peerConnection.oniceconnectionstatechange = () => console.log(`DASHBOARD ICE state: ${peerConnection.iceConnectionState}`);
+            peerConnection.onconnectionstatechange = () => console.log(`DASHBOARD Connection state: ${peerConnection.connectionState}`);
+
 
             peerConnection.ontrack = event => {
-                console.log("Dashboard: Received remote track of kind:", event.track.kind);
+                console.log("DASHBOARD: Received remote track:", event.track.kind);
                 remoteStream.addTrack(event.track);
+                // *** CHANGE: Explicitly play the video when the stream is received to help with autoplay ***
+                remoteVideo.play().catch(e => console.error("DASHBOARD: Remote play failed", e));
             };
-
-            peerConnection.oniceconnectionstatechange = () => console.log(`Dashboard ICE state: ${peerConnection.iceConnectionState}`);
 
             peerConnection.onicecandidate = event => {
                 if (event.candidate) sessionRef.child('iceCandidates/dashboard').push(event.candidate.toJSON());
             };
 
             sessionRef.child('iceCandidates/client').on('child_added', snapshot => {
-                if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("DASHBOARD: Error adding client ICE candidate", e));
             });
 
             sessionRef.child('offer').on('value', async snapshot => {
                 if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
+                    console.log("DASHBOARD: Received offer, creating answer...");
                     try {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
                         const answer = await peerConnection.createAnswer();
                         await peerConnection.setLocalDescription(answer);
                         sessionRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
-                    } catch (e) { console.error("Error creating answer: ", e); }
+                        console.log("DASHBOARD: Answer sent.");
+                    } catch (e) { console.error("DASHBOARD: Error creating answer: ", e); }
                 }
             });
         }
 
-        // --- CLIENT LOGIC ---
         async function startClientLogic(sessionId) {
+            console.log(`CLIENT: Starting session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
             statusText.textContent = "Requesting permissions...";
 
             try {
-                // Request both video and audio
                 const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
+                console.log("CLIENT: Permissions granted.");
 
-                // *** NEW: Start capturing and sending images every 5 seconds ***
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
 
                 localVideo.onloadedmetadata = () => {
+                    console.log("CLIENT: Video metadata loaded. Starting image capture.");
                     canvas.width = localVideo.videoWidth;
                     canvas.height = localVideo.videoHeight;
-
-                    setInterval(() => {
-                        // Ensure the video element is ready to capture a frame
+                    
+                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear any previous interval
+                    imageCaptureInterval = setInterval(() => {
                         if (localVideo.readyState >= 2) { 
                             try {
                                 context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-                                // Convert canvas to Base64 JPEG string
-                                const imageData = canvas.toDataURL('image/jpeg', 0.7); // 70% quality for smaller size
-                                // Send to Firebase
+                                const imageData = canvas.toDataURL('image/jpeg', 0.7);
                                 sessionRef.child('image').set(imageData);
-                            } catch (e) {
-                                console.error("Error capturing and sending image:", e);
-                            }
+                            } catch (e) { console.error("CLIENT: Error capturing image:", e); }
                         }
-                    }, 5000); // 5000ms = 5 seconds
+                    }, 5000);
                 };
 
-
                 navigator.geolocation.watchPosition(
-                    position => {
-                        const { latitude, longitude } = position.coords;
-                        sessionRef.child('location').set({ lat: latitude, lng: longitude });
-                    },
-                    error => console.error("Location error:", error),
+                    position => sessionRef.child('location').set({ lat: position.coords.latitude, lng: position.coords.longitude }),
+                    error => console.error("CLIENT: Location error:", error),
                     { enableHighAccuracy: true }
                 );
 
                 statusText.textContent = "Connecting...";
-
                 peerConnection = new RTCPeerConnection(peerConnectionConfig);
-                peerConnection.oniceconnectionstatechange = () => console.log(`Client ICE state: ${peerConnection.iceConnectionState}`);
                 
+                // *** CHANGE: Add detailed logging for debugging connection issues ***
+                peerConnection.oniceconnectionstatechange = () => console.log(`CLIENT ICE state: ${peerConnection.iceConnectionState}`);
+                peerConnection.onconnectionstatechange = () => {
+                    console.log(`CLIENT Connection state: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'connected') {
+                        statusText.textContent = "Connection Established. Tracking is Active.";
+                    }
+                }
+
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
                 peerConnection.onicecandidate = event => {
@@ -474,22 +464,24 @@
                 };
 
                 sessionRef.child('iceCandidates/dashboard').on('child_added', snapshot => {
-                    if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                    if (snapshot.exists()) peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val())).catch(e => console.error("CLIENT: Error adding dashboard ICE candidate", e));
                 });
 
+                console.log("CLIENT: Creating offer...");
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 sessionRef.child('offer').set({ type: offer.type, sdp: offer.sdp });
+                console.log("CLIENT: Offer sent.");
 
                 sessionRef.child('answer').on('value', async snapshot => {
                     if (snapshot.exists() && !peerConnection.currentRemoteDescription) {
+                        console.log("CLIENT: Received answer.");
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
-                        statusText.textContent = "Connection Established. Tracking is Active.";
                     }
                 });
 
             } catch (error) {
-                console.error("Permission or connection error:", error);
+                console.error("CLIENT: Permission or connection error:", error);
                 statusText.textContent = `Error: ${error.message}. Please grant permissions and reload.`;
                 alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.message}`);
             }
