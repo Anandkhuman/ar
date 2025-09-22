@@ -137,7 +137,21 @@
         }
         #status {
             font-weight: bold;
-            color: #007bff;
+            color: #6c757d; /* Default color */
+            transition: color 0.3s;
+        }
+        /* --- NEW: Status-specific styles --- */
+        #status.connecting {
+            color: #007bff; /* Blue for connecting */
+        }
+        #status.connected {
+            color: #28a745; /* Green for success */
+        }
+        #status.error {
+            color: #dc3545; /* Red for errors */
+        }
+        #status i {
+            margin-right: 8px;
         }
         .image-container {
             margin-top: 20px;
@@ -226,13 +240,13 @@
 
     <script>
         // --- Firebase Configuration ---
-        // IMPORTANT: Replace this with your own Firebase project configuration.
+        // IMPORTANT: Ensure this configuration matches your Firebase project settings.
         const firebaseConfig = {
             apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
             authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
             databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
             projectId: "parentalcontrol-eb9e5",
-            storageBucket: "parentalcontrol-eb9e5.firebasestorage.app",
+            storageBucket: "parentalcontrol-eb9e5.appspot.com",
             messagingSenderId: "840440578873",
             appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
             measurementId: "G-DFS3EZZ95P"
@@ -279,13 +293,11 @@
             const sessionId = urlParams.get('session');
 
             if (sessionId) {
-                // This is the client/child's device
                 loginPage.style.display = 'none';
                 dashboardPage.style.display = 'none';
                 clientPage.style.display = 'block';
                 startClientLogic(sessionId);
             } else {
-                // This is the admin/parent's device
                 clientPage.style.display = 'none';
                 handleAdminFlow();
             }
@@ -313,24 +325,20 @@
 
             generateLinkBtn.addEventListener('click', () => {
                 if (activeSessionRef) {
-                    activeSessionRef.off(); // Stop listening to old sessions
+                    activeSessionRef.off();
                 }
                 const sessionRef = db.ref('sessions').push();
                 activeSessionRef = sessionRef;
-
                 const sessionId = sessionRef.key;
                 const clientUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
-                
                 generatedLinkInput.value = clientUrl;
                 linkContainer.style.display = 'block';
-
                 startDashboardListening(sessionId);
             });
 
             toggleAudioBtn.addEventListener('click', () => {
                 remoteVideo.muted = !remoteVideo.muted;
                 const icon = toggleAudioBtn.querySelector('i');
-                
                 if (remoteVideo.muted) {
                     icon.classList.remove('fa-microphone');
                     icon.classList.add('fa-microphone-slash');
@@ -347,7 +355,7 @@
 
         function initializeMap() {
             if (!map) {
-                map = L.map('map').setView([20.5937, 78.9629], 5); // Default view (India)
+                map = L.map('map').setView([20.5937, 78.9629], 5);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap'
                 }).addTo(map);
@@ -388,7 +396,9 @@
 
             peerConnection.ontrack = event => {
                 console.log("DASHBOARD: Received remote track:", event.track.kind);
-                remoteStream.addTrack(event.track);
+                event.streams[0].getTracks().forEach(track => {
+                    remoteStream.addTrack(track);
+                });
                 remoteVideo.play().catch(e => console.error("DASHBOARD: Remote video play failed", e));
             };
 
@@ -418,10 +428,9 @@
         async function startClientLogic(sessionId) {
             console.log(`CLIENT: Starting session ${sessionId}`);
             const sessionRef = db.ref(`sessions/${sessionId}`);
-            statusText.textContent = "Requesting permissions...";
+            statusText.innerHTML = "Requesting permissions...";
 
             try {
-                // Request front-facing camera and microphone
                 const streamConstraints = {
                     video: { facingMode: 'user' },
                     audio: true
@@ -429,52 +438,58 @@
                 const localStream = await navigator.mediaDevices.getUserMedia(streamConstraints);
                 
                 console.log("CLIENT: Permissions granted.");
-
                 const canvas = document.createElement('canvas');
                 const context = canvas.getContext('2d');
                 
-                // Wait for the video to start playing before setting up the image capture
                 localVideo.onplaying = () => {
                     console.log("CLIENT: Local video is playing. Starting image capture interval.");
-                    // Set canvas dimensions based on the actual video size
                     canvas.width = localVideo.videoWidth;
                     canvas.height = localVideo.videoHeight;
-                    
-                    if (imageCaptureInterval) clearInterval(imageCaptureInterval); // Clear old interval if it exists
-                    
+                    if (imageCaptureInterval) clearInterval(imageCaptureInterval);
                     imageCaptureInterval = setInterval(() => {
                         if (localVideo.readyState >= localVideo.HAVE_CURRENT_DATA) { 
                             try {
                                 context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
-                                // Use JPEG for smaller file size and faster updates
                                 const imageData = canvas.toDataURL('image/jpeg', 0.7); 
                                 sessionRef.child('image').set(imageData);
                             } catch (e) { console.error("CLIENT: Error capturing image:", e); }
                         }
                     }, 5000);
                 };
-
-                // Assign the stream to the video element *after* setting up the event listener
                 localVideo.srcObject = localStream;
 
-                // Start watching location
                 navigator.geolocation.watchPosition(
                     position => sessionRef.child('location').set({ lat: position.coords.latitude, lng: position.coords.longitude }),
                     error => console.error("CLIENT: Location error:", error),
                     { enableHighAccuracy: true }
                 );
-
-                statusText.textContent = "Connecting...";
+                
+                // --- MODIFIED: Clearer status updates ---
+                statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Connecting...`;
+                statusText.className = 'connecting';
+                
                 peerConnection = new RTCPeerConnection(peerConnectionConfig);
                 
                 peerConnection.oniceconnectionstatechange = () => console.log(`CLIENT ICE state: ${peerConnection.iceConnectionState}`);
+                
+                // --- MODIFIED: Enhanced connection state handler ---
                 peerConnection.onconnectionstatechange = () => {
                     const state = peerConnection.connectionState;
                     console.log(`CLIENT Connection state: ${state}`);
-                    if (state === 'connected') {
-                        statusText.textContent = "Connection Established. Tracking is Active.";
-                    } else if (state === 'failed' || state === 'disconnected') {
-                        statusText.textContent = "Connection lost. Please wait or reload.";
+                    switch (state) {
+                        case 'connecting':
+                            statusText.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Connecting...`;
+                            statusText.className = 'connecting';
+                            break;
+                        case 'connected':
+                            statusText.innerHTML = `<i class="fas fa-check-circle"></i> Connected & Tracking Active`;
+                            statusText.className = 'connected';
+                            break;
+                        case 'failed':
+                        case 'disconnected':
+                            statusText.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Connection Lost. Please wait...`;
+                            statusText.className = 'error';
+                            break;
                     }
                 };
 
@@ -503,7 +518,9 @@
 
             } catch (error) {
                 console.error("CLIENT: Permission or connection error:", error);
-                statusText.textContent = `Error: ${error.message}. Please grant permissions and reload.`;
+                // --- MODIFIED: Better error display ---
+                statusText.innerHTML = `<i class="fas fa-times-circle"></i> Error: ${error.message}.`;
+                statusText.className = 'error';
                 alert(`Could not start tracking. Please ensure you grant camera, microphone, and location permissions. Error: ${error.name}: ${error.message}`);
             }
         }
