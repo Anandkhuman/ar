@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Parent Control</title>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" integrity="sha512-1ycn6IcaQQ40/MKBW2W4Rhis/DbILU74C1vSrLJxCq57o941Ym01SwNsOMqvEBFlcgUa6xLiPY/NS5R+E6ztJQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <!-- Leaflet.js CSS for map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
@@ -85,6 +87,40 @@
             padding: 10px;
             border-radius: 5px;
         }
+        .video-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .video-header h2 {
+            margin: 0;
+            text-align: left;
+        }
+        #toggle-audio-btn {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 50%;
+            font-size: 16px;
+            background-color: #dc3545;
+            color: white;
+            border: 1px solid #dc3545;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #toggle-audio-btn:hover {
+            background-color: #c82333;
+        }
+        #toggle-audio-btn.live {
+            background-color: #28a745;
+            border-color: #28a745;
+        }
+        #toggle-audio-btn.live:hover {
+            background-color: #218838;
+        }
         #remote-video {
             width: 100%;
             background-color: #000;
@@ -141,8 +177,14 @@
 
         <div class="live-view">
             <div class="video-container">
-                <h2>Live Camera Feed</h2>
-                <video id="remote-video" autoplay playsinline></video>
+                <div class="video-header">
+                    <h2>Live Camera Feed</h2>
+                    <button id="toggle-audio-btn" title="Listen to Live Audio">
+                        <i class="fas fa-microphone-slash"></i>
+                    </button>
+                </div>
+                <!-- Video starts muted by default -->
+                <video id="remote-video" autoplay playsinline muted></video>
             </div>
             <div class="map-container">
                 <h2>Live Location</h2>
@@ -156,6 +198,7 @@
         <h1>Tracking is Active</h1>
         <p>Please keep this page open. Your parent is monitoring this session.</p>
         <p id="status">Initializing...</p>
+        <!-- Client video is muted to prevent feedback -->
         <video id="local-video" autoplay muted playsinline style="display:none;"></video>
     </div>
 
@@ -170,14 +213,13 @@
     <script>
         // PASTE YOUR FIREBASE CONFIG HERE
         const firebaseConfig = {
-  apiKey: "AIzaSyA0ZwDrt3AxSdvEqENFP9weWvaF5lMwfAE",
-  authDomain: "parentalcontrol-eb9e5.firebaseapp.com",
-  databaseURL: "https://parentalcontrol-eb9e5-default-rtdb.firebaseio.com",
-  projectId: "parentalcontrol-eb9e5",
-  storageBucket: "parentalcontrol-eb9e5.firebasestorage.app",
-  messagingSenderId: "840440578873",
-  appId: "1:840440578873:web:6eadfdcfd9b8852e1a5ee8",
-  measurementId: "G-DFS3EZZ95P"
+          apiKey: "YOUR_API_KEY",
+          authDomain: "YOUR_AUTH_DOMAIN",
+          databaseURL: "YOUR_DATABASE_URL",
+          projectId: "YOUR_PROJECT_ID",
+          storageBucket: "YOUR_STORAGE_BUCKET",
+          messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+          appId: "YOUR_APP_ID"
         };
 
         // Initialize Firebase
@@ -212,6 +254,7 @@
         const generatedLinkInput = document.getElementById('generated-link');
         const linkContainer = document.getElementById('link-container');
         const remoteVideo = document.getElementById('remote-video');
+        const toggleAudioBtn = document.getElementById('toggle-audio-btn');
 
         const statusText = document.getElementById('status');
         const localVideo = document.getElementById('local-video');
@@ -254,7 +297,7 @@
 
             generateLinkBtn.addEventListener('click', () => {
                 if(activeSessionRef) {
-                    activeSessionRef.off(); // Purane listeners ko band karo
+                    activeSessionRef.off(); // Stop listening to old sessions
                 }
                 const sessionRef = db.ref('sessions').push();
                 activeSessionRef = sessionRef;
@@ -266,6 +309,26 @@
                 linkContainer.style.display = 'block';
 
                 startDashboardListening(sessionId);
+            });
+
+            // --- AUDIO TOGGLE LOGIC ---
+            toggleAudioBtn.addEventListener('click', () => {
+                remoteVideo.muted = !remoteVideo.muted;
+                const icon = toggleAudioBtn.querySelector('i');
+                
+                if (remoteVideo.muted) {
+                    // It's currently muted
+                    icon.classList.remove('fa-microphone');
+                    icon.classList.add('fa-microphone-slash');
+                    toggleAudioBtn.classList.remove('live');
+                    toggleAudioBtn.title = "Listen to Live Audio";
+                } else {
+                    // It's now live
+                    icon.classList.remove('fa-microphone-slash');
+                    icon.classList.add('fa-microphone');
+                    toggleAudioBtn.classList.add('live');
+                    toggleAudioBtn.title = "Mute Live Audio";
+                }
             });
         }
 
@@ -336,6 +399,7 @@
             statusText.textContent = "Requesting permissions...";
 
             try {
+                // Request both video and audio
                 const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localVideo.srcObject = localStream;
 
